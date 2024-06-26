@@ -6,6 +6,7 @@ defaults:
   - env: default
   - datasets: default
   - ijepa_embedder: default
+  - sjepa_embedder: default
 
 wandb:
   mode: online

@@ -52,9 +52,7 @@ class Collector:
 
             observations.append(self.obs)
 
-            obs = self.receive_padded_obs(observations, max_blocks = agent.world_model.config.max_blocks)
-            print(obs.shape)
-            # obs = rearrange(torch.FloatTensor(self.obs).div(255), 'n h w c -> n c h w').to(agent.device)
+            obs = self.receive_padded_obs(observations, max_blocks = agent.world_model.config.max_blocks).to(agent.device)
             act = agent.act(obs, should_sample=should_sample, temperature=temperature).cpu().numpy()
 
             if random.random() < epsilon:

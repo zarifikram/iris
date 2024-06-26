@@ -81,16 +81,19 @@ class Trainer:
         env = train_env if self.cfg.training.should else test_env
 
         ijepa_embedder = instantiate(cfg.ijepa_embedder).to(self.device)
+        sjepa_embedder = instantiate(cfg.sjepa_embedder).to(self.device)
         tokenizer = instantiate(cfg.tokenizer)
         world_model = WorldModel(obs_vocab_size=tokenizer.vocab_size, act_vocab_size=env.num_actions, config=instantiate(cfg.world_model))
         actor_critic = ActorCritic(**cfg.actor_critic, act_vocab_size=env.num_actions)
-        self.agent = JEPA_Agent(ijepa_embedder, world_model, actor_critic).to(self.device) # TO-DO
+        self.agent = JEPA_Agent(ijepa_embedder, sjepa_embedder, world_model, actor_critic).to(self.device) # TO-DO
 
-        print(f'{sum(p.numel() for p in self.agent.embedder.parameters())} parameters in agent.embedder')
+        print(f'{sum(p.numel() for p in self.agent.frame_embedder.parameters())} parameters in agent.frame_embedder')
+        print(f'{sum(p.numel() for p in self.agent.sequence_embedder.parameters())} parameters in agent.sequence_embedder')
         print(f'{sum(p.numel() for p in self.agent.world_model.parameters())} parameters in agent.world_model')
         print(f'{sum(p.numel() for p in self.agent.actor_critic.parameters())} parameters in agent.actor_critic')
 
-        self.optimizer_embedder = torch.optim.Adam(self.agent.embedder.parameters(), lr=cfg.training.learning_rate)
+        self.optimizer_embedder = torch.optim.Adam(self.agent.frame_embedder.parameters(), lr=cfg.training.learning_rate)
+        self.optimizer_embedder = torch.optim.Adam(self.agent.sequence_embedder.parameters(), lr=cfg.training.learning_rate)
         self.optimizer_world_model = configure_optimizer(self.agent.world_model, cfg.training.learning_rate, cfg.training.world_model.weight_decay)
         self.optimizer_actor_critic = torch.optim.Adam(self.agent.actor_critic.parameters(), lr=cfg.training.learning_rate)
 

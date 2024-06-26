@@ -3,28 +3,23 @@ import torch.nn as nn
 from x_transformers import Decoder
 
 class PatchEmbed(nn.Module):
-    """Image to Patch Embedding"""
+    """Sequence to Embedding"""
 
-    def __init__(self, img_size: int, patch_size: int, in_chans: int, embed_dim: int):
+    def __init__(self, sequence_length: int, in_embed_dim: int, out_embed_dim: int):
         super().__init__()
-        if isinstance(img_size, int):
-            img_size = img_size, img_size
-        if isinstance(patch_size, int):
-            patch_size = patch_size, patch_size
-        # calculate the number of patches
-        self.patch_shape = (img_size[0] // patch_size[0], img_size[1] // patch_size[1])
-
+        self.sequence_length = sequence_length
         # convolutional layer to convert the image into patches
-        self.conv = nn.Conv2d(
-            in_chans, embed_dim, kernel_size=patch_size, stride=patch_size
+        self.net = nn.Sequential(
+            nn.Linear(in_embed_dim, 2 * out_embed_dim),
+            nn.ReLU(),
+            nn.Linear(2 * out_embed_dim, out_embed_dim),
         )
 
     def forward(self, x):
-        b, t, c, h, w = x.shape
-        x = rearrange(x, "b t c h w -> (b t) c h w")
-        x = self.conv(x)
-        # flatten the patches
-        x = rearrange(x, "(b t) e h w -> b t (h w) e", b=b, t=t)
+        assert x.ndim == 3, "Input must be of shape (batch, sequence, embed_dim)"
+        assert x.size(1) == self.sequence_length, "Input sequence length must match the number of blocks"
+        x = self.net(x)
+        
         return x
 
 

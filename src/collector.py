@@ -51,8 +51,10 @@ class Collector:
         while not should_stop(steps, episodes):
 
             observations.append(self.obs)
-            
-            obs = rearrange(torch.FloatTensor(self.obs).div(255), 'n h w c -> n c h w').to(agent.device)
+
+            obs = self.receive_padded_obs(observations, max_blocks = agent.world_model.config.max_blocks)
+            print(obs.shape)
+            # obs = rearrange(torch.FloatTensor(self.obs).div(255), 'n h w c -> n c h w').to(agent.device)
             act = agent.act(obs, should_sample=should_sample, temperature=temperature).cpu().numpy()
 
             if random.random() < epsilon:
@@ -109,9 +111,17 @@ class Collector:
 
         return to_log
 
-    def receive_padded_obs(self, observations: np.ndarray) -> None:
-        pass
-
+    def receive_padded_obs(self, observations: np.ndarray, max_blocks: int) -> torch.FloatTensor:
+        # observations: List[np.ndarray] of shape (N, H, W, C) in [0, 255]
+        # return torch.FloatTensor of shape (N, T, C, H, W) in [0, 1] where T is max_blocks
+        # take the recent max_blocks observations
+        recent_observations = np.array(observations[-max_blocks:])
+        recent_observations = rearrange(torch.from_numpy(recent_observations), 't n h w c -> n t c h w').float().div(255)
+        # pad
+        left_pad = max(0, max_blocks - recent_observations.size(1))
+        recent_observations = torch.nn.functional.pad(recent_observations, [0, 0, 0, 0, 0, 0, left_pad, 0])
+        return recent_observations
+    
     def add_experience_to_dataset(self, observations: List[np.ndarray], actions: List[np.ndarray], rewards: List[np.ndarray], dones: List[np.ndarray]) -> None:
         assert len(observations) == len(actions) == len(rewards) == len(dones)
 

@@ -1,0 +1,21 @@
+_target_: models.ijepa_embedder.IJEPA_Embedder
+encoder:
+  _target_: models.ijepa_embedder.IJEPA
+  img_size : 16 # gotta be a power of 2
+  patch_size: 4 # turns image to 4x4
+  in_chans: 3 
+  embed_dim: 64
+  enc_heads: 8
+  enc_depth: 8
+  decoder_depth: 6
+  M: 4 #number of different target blocks
+  layer_dropout: 0.0
+  post_emb_norm: False
+lr: 1e-6
+weight_decay: 0.05
+target_aspect_ratio: (0.75,1.5)
+target_scale: (0.15, .2)
+context_aspect_ratio: 1
+context_scale: (0.85,1.0)
+m: 0.996 #momentum
+m_start_end: (.996, 1.)

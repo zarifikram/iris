@@ -40,10 +40,10 @@ class Collector:
         burnin_obs_rec, mask_padding = None, None
         if set(self.episode_ids) != {None} and burn_in > 0:
             current_episodes = [self.dataset.get_episode(episode_id) for episode_id in self.episode_ids]
-            segmented_episodes = [episode.segment(start=len(episode) - burn_in, stop=len(episode), should_pad=True) for episode in current_episodes]
+            segmented_episodes = [episode.batch_segment(start=len(episode) - burn_in, stop=len(episode), batch_size= burn_in, should_pad=True) for episode in current_episodes]
             mask_padding = torch.stack([episode.mask_padding for episode in segmented_episodes], dim=0).to(agent.device)
             burnin_obs = torch.stack([episode.observations for episode in segmented_episodes], dim=0).float().div(255).to(agent.device)
-            burnin_obs_rec = torch.clamp(agent.tokenizer.encode_decode(burnin_obs, should_preprocess=True, should_postprocess=True), 0, 1)
+            burnin_obs_rec = agent.calculate_sequence_embedding_from_obs(burnin_obs)
 
         agent.actor_critic.reset(n=self.env.num_envs, burnin_observations=burnin_obs_rec, mask_padding=mask_padding)
         pbar = tqdm(total=num_steps if num_steps is not None else num_episodes, desc=f'Experience collection ({self.dataset.name})', file=sys.stdout)
@@ -54,7 +54,6 @@ class Collector:
 
             obs = self.receive_padded_obs(observations, max_blocks = agent.world_model.config.max_blocks).to(agent.device)
             act = agent.act(obs, should_sample=should_sample, temperature=temperature).cpu().numpy()
-
             if random.random() < epsilon:
                 act = self.heuristic.act(obs).cpu().numpy()
             self.obs, reward, done, _ = self.env.step(act)
@@ -119,6 +118,8 @@ class Collector:
         left_pad = max(0, max_blocks - recent_observations.size(1))
         recent_observations = torch.nn.functional.pad(recent_observations, [0, 0, 0, 0, 0, 0, left_pad, 0])
         return recent_observations
+    
+
     
     def add_experience_to_dataset(self, observations: List[np.ndarray], actions: List[np.ndarray], rewards: List[np.ndarray], dones: List[np.ndarray]) -> None:
         assert len(observations) == len(actions) == len(rewards) == len(dones)

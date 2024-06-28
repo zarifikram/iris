@@ -84,6 +84,7 @@ class EpisodesDataset:
         for k in episodes_segments[0]:
             batch[k] = torch.stack([e_s[k] for e_s in episodes_segments])
         batch['observations'] = batch['observations'].float() / 255.0  # int8 to float and scale
+        
         return batch
 
     def traverse(self, batch_num_samples: int, chunk_size: int):

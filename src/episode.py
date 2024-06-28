@@ -1,6 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
+from typing import List
 
 import torch
 
@@ -12,6 +13,12 @@ class EpisodeMetrics:
 
 
 @dataclass
+class BatchEpisodeSegment:
+    observations: torch.ByteTensor
+    mask_padding: torch.BoolTensor
+
+
+@dataclass
 class Episode:
     observations: torch.ByteTensor
     actions: torch.LongTensor
@@ -20,7 +27,13 @@ class Episode:
     mask_padding: torch.BoolTensor
 
     def __post_init__(self):
-        assert len(self.observations) == len(self.actions) == len(self.rewards) == len(self.ends) == len(self.mask_padding)
+        assert (
+            len(self.observations)
+            == len(self.actions)
+            == len(self.rewards)
+            == len(self.ends)
+            == len(self.mask_padding)
+        )
         if self.ends.sum() > 0:
             idx_end = torch.argmax(self.ends) + 1
             self.observations = self.observations[:idx_end]
@@ -48,8 +61,21 @@ class Episode:
         assert padding_length_right == padding_length_left == 0 or should_pad
 
         def pad(x):
-            pad_right = torch.nn.functional.pad(x, [0 for _ in range(2 * x.ndim - 1)] + [padding_length_right]) if padding_length_right > 0 else x
-            return torch.nn.functional.pad(pad_right, [0 for _ in range(2 * x.ndim - 2)] + [padding_length_left, 0]) if padding_length_left > 0 else pad_right
+            pad_right = (
+                torch.nn.functional.pad(
+                    x, [0 for _ in range(2 * x.ndim - 1)] + [padding_length_right]
+                )
+                if padding_length_right > 0
+                else x
+            )
+            return (
+                torch.nn.functional.pad(
+                    pad_right,
+                    [0 for _ in range(2 * x.ndim - 2)] + [padding_length_left, 0],
+                )
+                if padding_length_left > 0
+                else pad_right
+            )
 
         start = max(0, start)
         stop = min(len(self), stop)
@@ -65,9 +91,40 @@ class Episode:
         segment.actions = pad(segment.actions)
         segment.rewards = pad(segment.rewards)
         segment.ends = pad(segment.ends)
-        segment.mask_padding = torch.cat((torch.zeros(padding_length_left, dtype=torch.bool), segment.mask_padding, torch.zeros(padding_length_right, dtype=torch.bool)), dim=0)
+        segment.mask_padding = torch.cat(
+            (
+                torch.zeros(padding_length_left, dtype=torch.bool),
+                segment.mask_padding,
+                torch.zeros(padding_length_right, dtype=torch.bool),
+            ),
+            dim=0,
+        )
 
         return segment
+
+    def batch_segment(
+        self, start: int, stop: int, batch_size: int, should_pad: bool = False
+    ) -> List[Episode]:
+        episode_segments = [
+            self.segment(i - batch_size, i, should_pad)
+            for i in range(max(start + 1, 1), stop + 1)
+        ]
+
+        observations = torch.stack([es.observations for es in episode_segments])
+        padding_length_left = max(0, -start)
+        observations = torch.nn.functional.pad(
+            observations,
+            [0 for _ in range(2 * observations.ndim - 2)] + [padding_length_left, 0],
+        )
+        mask_padding = torch.stack([es.mask_padding.any() for es in episode_segments])
+        mask_padding = torch.cat(
+            (
+                torch.zeros(padding_length_left, dtype=torch.bool),
+                mask_padding,
+            ),
+            dim=0,
+        )
+        return BatchEpisodeSegment(observations, mask_padding)
 
     def compute_metrics(self) -> EpisodeMetrics:
         return EpisodeMetrics(len(self), self.rewards.sum())

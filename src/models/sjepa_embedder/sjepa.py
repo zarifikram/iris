@@ -13,6 +13,7 @@ from .utils import PatchEmbed, Predictor
 class SJEPA(nn.Module):
     def __init__(
         self,
+        action_vocab_size: int,
         sequence_length: int,
         in_embed_dim: int,
         embed_dim: int,
@@ -25,8 +26,8 @@ class SJEPA(nn.Module):
     ):
         super().__init__()
         self.sequence_length = sequence_length
-        self.embed_dim = in_embed_dim
-        self.out_embed_dim = embed_dim
+        self.in_embed_dim = in_embed_dim
+        self.embed_dim = embed_dim
         self.M = M
         self.layer_dropout = layer_dropout
         # define the patch embedding and positional embedding
@@ -37,7 +38,7 @@ class SJEPA(nn.Module):
         )
         self.num_tokens = sequence_length
         self.pos_embedding = nn.Parameter(torch.randn(1, self.num_tokens, embed_dim))
-
+        self.action_embedding = nn.Embedding(action_vocab_size, embed_dim)
         # define the cls and mask tokens
         self.mask_token = nn.Parameter(torch.randn(1, 1, embed_dim))
         nn.init.trunc_normal_(self.mask_token, 0.02)
@@ -52,8 +53,10 @@ class SJEPA(nn.Module):
             layer_dropout=self.layer_dropout,
         )
         self.student_encoder = copy.deepcopy(self.teacher_encoder)
-        self.predictor = Predictor(embed_dim, enc_heads, decoder_depth)
+        self.predictor = Predictor(self.num_tokens, embed_dim, enc_heads, decoder_depth)
 
+        
+    
     @torch.no_grad()
     def get_target_block(
         self,
@@ -134,48 +137,62 @@ class SJEPA(nn.Module):
         return x[:, patches, :]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        assert (
+            x.ndim == 3
+            and x.size(1) == self.sequence_length
+            and x.size(2) == self.in_embed_dim
+        ), f"Expected input of shape (batch_size, {self.sequence_length}, {self.in_embed_dim}), got {x.shape}"
         x = self.patch_embed(x) + self.pos_embedding
         x = self.post_emb_norm(x)
         return self.student_encoder(x)
 
+    def compute_context_and_target_sequence_embeddings(
+        self, frame_embeddings: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        assert (
+            frame_embeddings.ndim == 3
+            and frame_embeddings.size(1) == self.num_tokens + 1
+            and frame_embeddings.size(2) == self.in_embed_dim
+        )
+        context_suquence_embeddings = self.compute_sequence_embeddings(
+            frame_embeddings[:, :-1, :], self.student_encoder
+        )
+        target_sequence_embeddings = self.compute_sequence_embeddings(
+            frame_embeddings[:, 1:, :], self.teacher_encoder
+        )
+        return context_suquence_embeddings, target_sequence_embeddings
+
+    def compute_sequence_embeddings(
+        self, frame_embeddings: torch.Tensor, encoder: Encoder
+    ) -> torch.Tensor:
+        sequence_embeddings = self.patch_embed(frame_embeddings) + self.pos_embedding
+        sequence_embeddings = self.norm(sequence_embeddings)
+        return encoder(sequence_embeddings)
+
     def compute_prediction_and_target(
         self,
         x: torch.Tensor,
-        target_aspect_ratio: float,
-        target_scale: float,
-        context_aspect_ratio: int,
-        context_scale: float,
+        actions: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        # get the patch embeddings
-        x = self.patch_embed(x)
-        b, n, e = x.shape
-        # add the positional embeddings
-        x = x + self.pos_embedding
-        # normalize the embeddings
-        x = self.post_emb_norm(x)
-        # #get target embeddings
-        target_blocks, target_patches, all_patches = self.get_target_block(
-            self.teacher_encoder,
-            x,
-            self.patch_dim,
-            target_aspect_ratio,
-            target_scale,
+
+        context_suquence_embeddings, target_sequence_embeddings = (
+            self.compute_context_and_target_sequence_embeddings(x)
         )
-        m, b, n, e = target_blocks.shape
-        # get context embedding
-
-        context_block = self.get_context_block(
-            x, self.patch_dim, context_aspect_ratio, context_scale, all_patches
+        action_sequence_embeddings = (
+            self.action_embedding(actions.squeeze()) + self.pos_embedding
         )
-        context_encoding = self.student_encoder(context_block)
-        context_encoding = self.norm(context_encoding)
+        assert (
+            context_suquence_embeddings.size(1)
+            == target_sequence_embeddings.size(1)
+            == action_sequence_embeddings.size(1)
+        )
 
-        prediction_blocks = torch.zeros((m, b, n, e)).to(x.device)
-        # get the prediction blocks, predict each target block separately
-        for i in range(m):
-            target_masks = self.mask_token.repeat(b, n, 1)
-            target_pos_embedding = self.pos_embedding[:, target_patches[i], :]
-            target_masks = target_masks + target_pos_embedding
-            prediction_blocks[i] = self.predictor(context_encoding, target_masks)
+        predicted_sequence_embedding, reward, ends = self.predictor(
+            context_suquence_embeddings, action_sequence_embeddings
+        )
 
-        return prediction_blocks, target_blocks
+        assert (
+            predicted_sequence_embedding.shape == target_sequence_embeddings.shape
+        ), f"Prediction shape {predicted_sequence_embedding.shape} must match target shape {target_sequence_embeddings.shape}"
+
+        return predicted_sequence_embedding, reward, ends, target_sequence_embeddings

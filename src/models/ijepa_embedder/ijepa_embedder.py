@@ -2,10 +2,14 @@ from dataclasses import dataclass
 from typing import Any, Optional, Tuple
 
 from einops import rearrange
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from utils import LossWithIntermediateLosses
 from .ijepa import IJEPA
+from dataset import Batch
 
 
 class IJEPA_Embedder(nn.Module):
@@ -42,90 +46,50 @@ class IJEPA_Embedder(nn.Module):
         # define loss
         self.criterion = nn.MSELoss()
 
+    def __repr__(self):
+        return "frame_embedder(Assran et al. 2023)"
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.model(x)
-    # def forward(self, x, target_aspect_ratio, target_scale, context_aspect_ratio, context_scale):
-    #     return self.model(x, target_aspect_ratio, target_scale, context_aspect_ratio, context_scale)
+        return self.model(self.preprocess_input(x))
 
-    # '''Update momentum for teacher encoder'''
-    # def update_momentum(self, m):
-    #     student_model = self.model.student_encoder.eval()
-    #     teacher_model = self.model.teacher_encoder.eval()
-    #     with torch.no_grad():
-    #         for student_param, teacher_param in zip(student_model.parameters(), teacher_model.parameters()):
-    #             teacher_param.data.mul_(other=m).add_(other=student_param.data, alpha=1 - m)
+    """Update momentum for teacher encoder"""
 
-    # def training_step(self, batch, batch_idx):
-    #     x = batch
-    #     #generate random target and context aspect ratio and scale
-    #     target_aspect_ratio = np.random.uniform(self.target_aspect_ratio[0], self.target_aspect_ratio[1])
-    #     target_scale = np.random.uniform(self.target_scale[0], self.target_scale[1])
-    #     context_aspect_ratio = self.context_aspect_ratio
-    #     context_scale = np.random.uniform(self.context_scale[0], self.context_scale[1])
+    def update_momentum(self, m: float):
+        student_model = self.model.student_encoder.eval()
+        teacher_model = self.model.teacher_encoder.eval()
+        with torch.no_grad():
+            for student_param, teacher_param in zip(
+                student_model.parameters(), teacher_model.parameters()
+            ):
+                teacher_param.data.mul_(other=m).add_(
+                    other=student_param.data, alpha=1 - m
+                )
 
-    #     y_student, y_teacher = self(x, target_aspect_ratio, target_scale, context_aspect_ratio, context_scale)
-    #     loss = self.criterion(y_student, y_teacher)
-    #     print('train_loss', loss)
+    def compute_loss(self, batch: Batch, **kwargs: Any) -> LossWithIntermediateLosses:
+        observations = self.preprocess_input(
+            rearrange(batch["observations"], "b t c h w -> (b t) c h w")
+        )
+        target_aspect_ratio = np.random.uniform(
+            self.target_aspect_ratio[0], self.target_aspect_ratio[1]
+        )
+        target_scale = np.random.uniform(self.target_scale[0], self.target_scale[1])
+        context_aspect_ratio = self.context_aspect_ratio
+        context_scale = np.random.uniform(self.context_scale[0], self.context_scale[1])
 
-    #     return loss
+        y_student, y_teacher = self.model.compute_prediction_and_target(
+            observations,
+            target_aspect_ratio,
+            target_scale,
+            context_aspect_ratio,
+            context_scale,
+        )
+        prediction_loss = self.criterion(y_student, y_teacher)
+        return LossWithIntermediateLosses(prediction_loss=prediction_loss)
 
-    # def validation_step(self, batch, batch_idx):
-    #     x = batch
-    #     target_aspect_ratio = np.random.uniform(self.target_aspect_ratio[0], self.target_aspect_ratio[1])
-    #     target_scale = np.random.uniform(self.target_scale[0], self.target_scale[1])
-    #     context_aspect_ratio = self.context_aspect_ratio
-    #     context_scale = np.random.uniform(self.context_scale[0], self.context_scale[1])
+    def teacher_step(self, total_steps: int):
+        self.update_momentum(self.m)
+        self.m += (self.m_start_end[1] - self.m_start_end[0]) / total_steps
 
-    #     y_student, y_teacher = self(x, target_aspect_ratio, target_scale, context_aspect_ratio, context_scale)
-    #     loss = self.criterion(y_student, y_teacher)
-    #     print('val_loss', loss)
-
-    #     return loss
-
-    # def predict_step(self, batch, batch_idx, dataloader_idx):
-    #     target_aspect_ratio = np.random.uniform(self.target_aspect_ratio[0], self.target_aspect_ratio[1])
-    #     target_scale = np.random.uniform(self.target_scale[0], self.target_scale[1])
-    #     context_aspect_ratio = self.context_aspect_ratio
-    #     context_scale = 1
-    #     self.model.mode = "test"
-
-    #     return self(batch, target_aspect_ratio, target_scale, context_aspect_ratio, context_scale) #just get teacher embedding
-
-    # def on_after_backward(self):
-    #     self.update_momentum(self.m)
-    #     self.m += (self.m_start_end[1] - self.m_start_end[0]) / self.trainer.estimated_stepping_batches
-
-    # def configure_optimizers(self):
-    #     optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
-    #     scheduler = torch.optim.lr_scheduler.OneCycleLR(
-    #         optimizer,
-    #         max_lr=self.lr,
-    #         total_steps=self.trainer.estimated_stepping_batches,
-    #     )
-    #     return {
-    #         "optimizer": optimizer,
-    #         "lr_scheduler": {
-    #             "scheduler": scheduler,
-    #             "interval": "step",
-    #         },
-    #     }
-
-
-# if __name__ == '__main__':
-#     dataset = D2VDataModule(dataset_path='data')
-
-#     model = IJEPA(img_size=224, patch_size=16, in_chans=3, embed_dim=64, enc_heads=8, enc_depth=8, decoder_depth=6, lr=1e-3)
-
-#     lr_monitor = LearningRateMonitor(logging_interval="step")
-#     model_summary = ModelSummary(max_depth=2)
-
-#     trainer = pl.Trainer(
-#         accelerator='gpu',
-#         devices=1,
-#         precision=16,
-#         max_epochs=10,
-#         callbacks=[lr_monitor, model_summary],
-#         gradient_clip_val=.1,
-#     )
-
-#     trainer.fit(model, dataset)
+    def preprocess_input(self, x: torch.Tensor) -> torch.Tensor:
+        """x is supposed to be channels first and in [0, 1]"""
+        return x.mul(2).sub(1)

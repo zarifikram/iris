@@ -37,17 +37,9 @@ class ActorCritic(nn.Module):
     def __init__(self, act_vocab_size, use_original_obs: bool = False) -> None:
         super().__init__()
         self.use_original_obs = use_original_obs
-        self.conv1 = nn.Conv2d(3, 32, 3, stride=1, padding=1)
-        self.maxp1 = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Conv2d(32, 32, 3, stride=1, padding=1)
-        self.maxp2 = nn.MaxPool2d(2, 2)
-        self.conv3 = nn.Conv2d(32, 64, 3, stride=1, padding=1)
-        self.maxp3 = nn.MaxPool2d(2, 2)
-        self.conv4 = nn.Conv2d(64, 64, 3, stride=1, padding=1)
-        self.maxp4 = nn.MaxPool2d(2, 2)
 
         self.lstm_dim = 512
-        self.lstm = nn.LSTMCell(1024, self.lstm_dim)
+        self.lstm = nn.LSTMCell(20 * 256, self.lstm_dim)
         self.hx, self.cx = None, None
 
         self.critic_linear = nn.Linear(512, 1)
@@ -60,11 +52,13 @@ class ActorCritic(nn.Module):
         self.hx, self.cx = None, None
 
     def reset(self, n: int, burnin_observations: Optional[torch.Tensor] = None, mask_padding: Optional[torch.Tensor] = None) -> None:
-        device = self.conv1.weight.device
+        device = self.actor_linear.weight.device
         self.hx = torch.zeros(n, self.lstm_dim, device=device)
         self.cx = torch.zeros(n, self.lstm_dim, device=device)
         if burnin_observations is not None:
-            assert burnin_observations.ndim == 5 and burnin_observations.size(0) == n and mask_padding is not None and burnin_observations.shape[:2] == mask_padding.shape
+            assert burnin_observations.ndim == 4 and burnin_observations.size(0) == n and mask_padding is not None and burnin_observations.shape[:2] == mask_padding.shape
+            # with torch.no_grad():
+            #     self(burnin_observations)
             for i in range(burnin_observations.size(1)):
                 if mask_padding[:, i].any():
                     with torch.no_grad():
@@ -75,19 +69,11 @@ class ActorCritic(nn.Module):
         self.cx = self.cx[mask]
 
     def forward(self, inputs: torch.FloatTensor, mask_padding: Optional[torch.BoolTensor] = None) -> ActorCriticOutput:
-        assert inputs.ndim == 4 and inputs.shape[1:] == (3, 64, 64)
-        assert 0 <= inputs.min() <= 1 and 0 <= inputs.max() <= 1
+        assert inputs.ndim == 3 and inputs.shape[1:] == (20, 256)
         assert mask_padding is None or (mask_padding.ndim == 1 and mask_padding.size(0) == inputs.size(0) and mask_padding.any())
         x = inputs[mask_padding] if mask_padding is not None else inputs
 
-
-        x = x.mul(2).sub(1)
-        x = F.relu(self.maxp1(self.conv1(x)))
-        x = F.relu(self.maxp2(self.conv2(x)))
-        x = F.relu(self.maxp3(self.conv3(x)))
-        x = F.relu(self.maxp4(self.conv4(x)))
-        x = torch.flatten(x, start_dim=1)
-
+        x = x.flatten(1)
         if mask_padding is None:
             self.hx, self.cx = self.lstm(x, (self.hx, self.cx))
         else:

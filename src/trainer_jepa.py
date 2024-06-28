@@ -1,6 +1,7 @@
 from collections import defaultdict
 from functools import partial
 from pathlib import Path
+import pickle
 import shutil
 import sys
 import time
@@ -8,7 +9,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import hydra
 from hydra.utils import instantiate
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf, open_dict
 import torch
 import torch.nn as nn
 from tqdm import tqdm
@@ -21,6 +22,7 @@ from episode import Episode
 from make_reconstructions import make_reconstructions_from_batch
 from models.actor_critic import ActorCritic
 from models.world_model import WorldModel
+from models.sjepa_embedder import SJEPA_Embedder
 from utils import configure_optimizer, EpisodeDirManager, set_seed
 # from models.ijepa_embedder import IJEPA_Embedder
 
@@ -80,6 +82,8 @@ class Trainer:
         assert self.cfg.training.should or self.cfg.evaluation.should
         env = train_env if self.cfg.training.should else test_env
 
+        with open_dict(cfg):
+            cfg.sjepa_embedder.encoder.action_vocab_size = env.num_actions
         ijepa_embedder = instantiate(cfg.ijepa_embedder).to(self.device)
         sjepa_embedder = instantiate(cfg.sjepa_embedder).to(self.device)
         tokenizer = instantiate(cfg.tokenizer)
@@ -92,8 +96,8 @@ class Trainer:
         print(f'{sum(p.numel() for p in self.agent.world_model.parameters())} parameters in agent.world_model')
         print(f'{sum(p.numel() for p in self.agent.actor_critic.parameters())} parameters in agent.actor_critic')
 
-        self.optimizer_embedder = torch.optim.Adam(self.agent.frame_embedder.parameters(), lr=cfg.training.learning_rate)
-        self.optimizer_embedder = torch.optim.Adam(self.agent.sequence_embedder.parameters(), lr=cfg.training.learning_rate)
+        self.optimizer_frame_embedder = torch.optim.Adam(self.agent.frame_embedder.parameters(), lr=cfg.training.learning_rate)
+        self.optimizer_sequence_embedder = torch.optim.Adam(self.agent.sequence_embedder.parameters(), lr=cfg.training.learning_rate)
         self.optimizer_world_model = configure_optimizer(self.agent.world_model, cfg.training.learning_rate, cfg.training.world_model.weight_decay)
         self.optimizer_actor_critic = torch.optim.Adam(self.agent.actor_critic.parameters(), lr=cfg.training.learning_rate)
 
@@ -105,6 +109,7 @@ class Trainer:
 
     def run(self) -> None:
 
+        all_logs = []
         for epoch in range(self.start_epoch, 1 + self.cfg.common.epochs):
 
             print(f"\nEpoch {epoch} / {self.cfg.common.epochs}\n")
@@ -119,7 +124,7 @@ class Trainer:
                 self.test_dataset.clear()
                 to_log += self.test_collector.collect(self.agent, epoch, **self.cfg.collection.test.config)
                 to_log += self.eval_agent(epoch)
-
+            
             if self.cfg.training.should:
                 self.save_checkpoint(epoch, save_agent_only=not self.cfg.common.do_checkpoint)
 
@@ -127,21 +132,33 @@ class Trainer:
             for metrics in to_log:
                 wandb.log({'epoch': epoch, **metrics})
 
+            all_logs.append(to_log)
+        
+        # pickle the all logs
+        with open('all_logs.pkl', 'wb') as f:
+            print('Saving logs to all_logs.pkl')
+            pickle.dump(all_logs, f)
         self.finish()
 
     def train_agent(self, epoch: int) -> None:
         self.agent.train()
         self.agent.zero_grad()
 
-        metrics_tokenizer, metrics_world_model, metrics_actor_critic = {}, {}, {}
+        metrics_frame_embedder, metrics_sequence_embedder, metrics_world_model, metrics_actor_critic = {}, {}, {}, {}
 
-        cfg_tokenizer = self.cfg.training.tokenizer
+        cfg_frame_emedder = self.cfg.training.frame_embedder
+        cfg_sequence_emedder = self.cfg.training.sequence_embedder
         cfg_world_model = self.cfg.training.world_model
         cfg_actor_critic = self.cfg.training.actor_critic
 
-        if epoch > cfg_tokenizer.start_after_epochs:
-            metrics_tokenizer = self.train_component(self.agent.tokenizer, self.optimizer_tokenizer, sequence_length=1, sample_from_start=True, **cfg_tokenizer)
-        self.agent.tokenizer.eval()
+        if epoch > cfg_frame_emedder.start_after_epochs:
+            metrics_frame_embedder = self.train_component(self.agent.frame_embedder, self.optimizer_frame_embedder, sequence_length=1, sample_from_start=True, **cfg_frame_emedder)
+        self.agent.frame_embedder.eval()
+
+        if epoch > cfg_sequence_emedder.start_after_epochs:
+            metrics_sequence_embedder = self.train_component(self.agent.sequence_embedder, self.optimizer_sequence_embedder, sequence_length=self.cfg.common.sequence_length + 1, sample_from_start=False, frame_embedder=self.agent.frame_embedder, **cfg_sequence_emedder)
+            print(f"SJEPA Losses: {metrics_sequence_embedder}")
+        self.agent.sequence_embedder.eval()
 
         if epoch > cfg_world_model.start_after_epochs:
             metrics_world_model = self.train_component(self.agent.world_model, self.optimizer_world_model, sequence_length=self.cfg.common.sequence_length, sample_from_start=True, tokenizer=self.agent.tokenizer, **cfg_world_model)
@@ -151,12 +168,11 @@ class Trainer:
             metrics_actor_critic = self.train_component(self.agent.actor_critic, self.optimizer_actor_critic, sequence_length=1 + self.cfg.training.actor_critic.burn_in, sample_from_start=False, tokenizer=self.agent.tokenizer, world_model=self.agent.world_model, **cfg_actor_critic)
         self.agent.actor_critic.eval()
 
-        return [{'epoch': epoch, **metrics_tokenizer, **metrics_world_model, **metrics_actor_critic}]
+        return [{'epoch': epoch, **metrics_frame_embedder, **metrics_sequence_embedder, **metrics_world_model, **metrics_actor_critic}]
 
     def train_component(self, component: nn.Module, optimizer: torch.optim.Optimizer, steps_per_epoch: int, batch_num_samples: int, grad_acc_steps: int, max_grad_norm: Optional[float], sequence_length: int, sample_from_start: bool, **kwargs_loss: Any) -> Dict[str, float]:
         loss_total_epoch = 0.0
         intermediate_losses = defaultdict(float)
-        print(f"training {str(component)} for {steps_per_epoch} steps and sequence length {sequence_length}")
         for _ in tqdm(range(steps_per_epoch), desc=f"Training {str(component)}", file=sys.stdout):
             optimizer.zero_grad()
             for _ in range(grad_acc_steps):
@@ -175,6 +191,8 @@ class Trainer:
                 torch.nn.utils.clip_grad_norm_(component.parameters(), max_grad_norm)
 
             optimizer.step()
+            if str(component) in ["frame_embedder(Assran et al. 2023)", "sequence_embedder"]:
+                component.teacher_step(total_steps = steps_per_epoch * 500)
 
         metrics = {f'{str(component)}/train/total_loss': loss_total_epoch, **intermediate_losses}
         return metrics
@@ -251,7 +269,7 @@ class Trainer:
         if not save_agent_only:
             torch.save(epoch, self.ckpt_dir / 'epoch.pt')
             torch.save({
-                "optimizer_tokenizer": self.optimizer_tokenizer.state_dict(),
+                "optimizer_frame_emedder": self.optimizer_frame_embedder.state_dict(),
                 "optimizer_world_model": self.optimizer_world_model.state_dict(),
                 "optimizer_actor_critic": self.optimizer_actor_critic.state_dict(),
             }, self.ckpt_dir / 'optimizer.pt')

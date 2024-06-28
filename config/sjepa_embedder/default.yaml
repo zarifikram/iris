@@ -3,8 +3,8 @@ encoder:
   _target_: models.sjepa_embedder.SJEPA
   sequence_length: 20
   in_embed_dim: 1024 
-  embed_dim: 512
-  enc_heads: 8
+  embed_dim: 256
+  enc_heads: 4
   enc_depth: 8
   decoder_depth: 6
   M: 4 #number of different target blocks
@@ -12,9 +12,9 @@ encoder:
   post_emb_norm: False
 lr: 1e-6
 weight_decay: 0.05
-target_aspect_ratio: (0.75,1.5)
-target_scale: (0.15, .2)
+target_aspect_ratio: [0.75,1.5]
+target_scale: [0.15, .2]
 context_aspect_ratio: 1
-context_scale: (0.85,1.0)
+context_scale: [0.85,1.0]
 m: 0.996 #momentum
-m_start_end: (.996, 1.)
+m_start_end: [.996, 1.]

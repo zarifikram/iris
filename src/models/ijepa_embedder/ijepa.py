@@ -136,13 +136,15 @@ class IJEPA(nn.Module):
         ).tolist()
 
         patches = [patch for patch in patches if patch not in target_patches]
-
         return x[:, patches, :]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        b, t = x.shape[:2]
+        x = rearrange(x, "b t c h w -> (b t) c h w")
         x = self.patch_embed(x) + self.pos_embedding
+        
         x = self.post_emb_norm(x)
-        return self.student_encoder(x)
+        return rearrange(self.student_encoder(x), "(b t) l e -> b t l e", b=b, t=t)
 
     def compute_prediction_and_target(
         self,
@@ -175,7 +177,7 @@ class IJEPA(nn.Module):
         )
         context_encoding = self.student_encoder(context_block)
         context_encoding = self.norm(context_encoding)
-
+        
         prediction_blocks = torch.zeros((m, b, n, e)).to(x.device)
         # get the prediction blocks, predict each target block separately
         for i in range(m):

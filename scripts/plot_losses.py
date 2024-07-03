@@ -11,30 +11,69 @@ dir = args.dir
 with open(dir + '/all_logs.pkl', 'rb') as f:
     all_logs = pickle.load(f)
 
-sequence_embedding_losses = [log['sequence_embedder/train/total_loss'] for log in all_logs if 'sequence_embedder/train/total_loss' in log]
-frame_embedding_losses = [log['frame_embedder(Assran et al. 2023)/train/total_loss'] for log in all_logs if 'frame_embedder(Assran et al. 2023)/train/total_loss' in log]
+sequence_embedding_prediction_losses = []
+sequence_embedding_reward_losses = []
+sequence_embedding_ends_losses = []
+frame_embedding_losses = []
+actor_critic_value_losses = []
+actor_critic_policy_losses = []
+actor_critic_entropy_losses = []
 
 
+print(all_logs[-1])
 for log_list in all_logs:
     for log in log_list:
-        if 'sequence_embedder/train/total_loss' in log:
-            sequence_embedding_losses.append(log['sequence_embedder/train/total_loss'])
-        if 'frame_embedder(Assran et al. 2023)/train/total_loss' in log:
-            frame_embedding_losses.append(log['frame_embedder(Assran et al. 2023)/train/total_loss'])
+        if 'frame_embedder(Assran et al. 2023)/train/prediction_loss' in log:
+            frame_embedding_losses.append(log['frame_embedder(Assran et al. 2023)/train/prediction_loss']) 
+        if 'sequence_embedder/train/prediction_loss' in log:
+            sequence_embedding_prediction_losses.append(log['sequence_embedder/train/prediction_loss'])
+        if 'sequence_embedder/train/reward_loss' in log:
+            sequence_embedding_reward_losses.append(log['sequence_embedder/train/reward_loss'])
+        if 'sequence_embedder/train/ends_loss' in log:
+            sequence_embedding_ends_losses.append(log['sequence_embedder/train/ends_loss'])
 
-print(f"Sequence Embedding Losses: {len(sequence_embedding_losses)}")
-print(f"Frame Embedding Losses: {len(frame_embedding_losses)}")
+        if 'actor_critic/train/loss_actions' in log:
+            actor_critic_policy_losses.append(log['actor_critic/train/loss_actions'])
+        if 'actor_critic/train/loss_values' in log:
+            actor_critic_value_losses.append(log['actor_critic/train/loss_values'])
+        if 'actor_critic/train/loss_entropy' in log:
+            actor_critic_entropy_losses.append(-1*log['actor_critic/train/loss_entropy'])
 
-fig, axes = plt.subplots(1, 2, figsize=(10, 10), sharex=True)
-axes[0].plot(np.arange(50, 200), sequence_embedding_losses)
-axes[0].set_title('Sequence Embedding Losses')
-axes[0].set_xlabel('Epoch')
-axes[0].set_ylabel('Loss')
-axes[1].plot(np.arange(25, 200), frame_embedding_losses)
-axes[1].set_title('Frame Embedding Losses')
-axes[1].set_xlabel('Epoch')
-axes[1].set_ylabel('Loss')
+
+
+fig, axes = plt.subplots(2, 4, figsize=(10, 5), sharex=True)
+axes[0][0].plot(np.arange(25, 250), frame_embedding_losses)
+axes[0][0].set_title('Frame Embedding Losses', fontsize=8)
+axes[0][0].set_ylabel('Loss')
+axes[0][0].set_xlabel('Epoch')
+axes[0][1].plot(np.arange(50, 250), sequence_embedding_prediction_losses)
+axes[0][1].set_title('Sequence Embedding Prediction Losses', fontsize=8)
+axes[0][1].set_xlabel('Epoch')
+axes[0][1].set_ylabel('Loss')
+axes[0][2].plot(np.arange(50, 250), sequence_embedding_reward_losses)
+axes[0][2].set_title('Sequence Embedding Reward Losses', fontsize=8)
+axes[0][2].set_xlabel('Epoch')
+axes[0][2].set_ylabel('Loss')
+axes[0][3].plot(np.arange(50, 250), sequence_embedding_ends_losses)
+axes[0][3].set_title('Sequence Embedding Ends Losses', fontsize=8)
+axes[0][3].set_xlabel('Epoch')
+axes[0][3].set_ylabel('Loss')
+axes[1][1].plot(np.arange(75, 250), actor_critic_value_losses)
+axes[1][1].set_title('Actor Critic Value Losses', fontsize=8)
+axes[1][1].set_xlabel('Epoch')
+axes[1][1].set_ylabel('Loss')
+axes[1][2].plot(np.arange(75, 250), actor_critic_policy_losses)
+axes[1][2].set_title('Actor Critic Policy Losses', fontsize=8)
+axes[1][2].set_xlabel('Epoch')
+axes[1][2].set_ylabel('Loss')
+axes[1][3].plot(np.arange(75, 250), actor_critic_entropy_losses)
+axes[1][3].set_title('Actor Critic Entropy Losses', fontsize=8)
+axes[1][3].set_xlabel('Epoch')
+axes[1][3].set_ylabel('Loss')
 # add log scale
-axes[0].set_yscale('log')
-axes[1].set_yscale('log')
+for ax in axes.flatten():
+    ax.set_yscale('log')
+
+
+
 plt.show()

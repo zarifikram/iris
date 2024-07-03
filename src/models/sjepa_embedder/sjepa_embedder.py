@@ -133,3 +133,18 @@ class SJEPA_Embedder(nn.Module):
         assert frame_embeddings.ndim == 4
         frame_embeddings = rearrange(frame_embeddings, "b t l e -> b t (l e)")
         return frame_embeddings
+
+    def predict_next_state(
+        self, sequence_embedding: torch.Tensor, actions: torch.Tensor
+    ) -> torch.Tensor:
+        assert (
+            sequence_embedding.ndim == 3
+            and actions.ndim == 2
+            and sequence_embedding.size(0) == actions.size(0)
+        )
+
+        next_sequence_embedding, next_reward_logits, next_ends_logits = (
+            self.model.predict_next_state(sequence_embedding, actions)
+        )
+
+        return next_sequence_embedding, next_reward_logits, next_ends_logits

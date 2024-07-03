@@ -55,8 +55,6 @@ class SJEPA(nn.Module):
         self.student_encoder = copy.deepcopy(self.teacher_encoder)
         self.predictor = Predictor(self.num_tokens, embed_dim, enc_heads, decoder_depth)
 
-        
-    
     @torch.no_grad()
     def get_target_block(
         self,
@@ -178,17 +176,14 @@ class SJEPA(nn.Module):
         context_suquence_embeddings, target_sequence_embeddings = (
             self.compute_context_and_target_sequence_embeddings(x)
         )
-        action_sequence_embeddings = (
-            self.action_embedding(actions.squeeze()) + self.pos_embedding
-        )
+
         assert (
             context_suquence_embeddings.size(1)
             == target_sequence_embeddings.size(1)
-            == action_sequence_embeddings.size(1)
         )
 
-        predicted_sequence_embedding, reward, ends = self.predictor(
-            context_suquence_embeddings, action_sequence_embeddings
+        predicted_sequence_embedding, reward, ends = self.predict_next_state(
+            context_suquence_embeddings, actions
         )
 
         assert (
@@ -196,3 +191,15 @@ class SJEPA(nn.Module):
         ), f"Prediction shape {predicted_sequence_embedding.shape} must match target shape {target_sequence_embeddings.shape}"
 
         return predicted_sequence_embedding, reward, ends, target_sequence_embeddings
+
+    def predict_next_state(
+        self, sequence_embeddings: torch.Tensor, actions: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        action_sequence_embeddings = (
+            self.action_embedding(actions.squeeze()) + self.pos_embedding
+        )
+        predicted_sequence_embedding, predicted_reward, predicted_ends = self.predictor(
+            sequence_embeddings, action_sequence_embeddings
+        )
+
+        return predicted_sequence_embedding, predicted_reward, predicted_ends

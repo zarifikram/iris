@@ -24,7 +24,7 @@ initialization:
   load_actor_critic: False
 
 common:
-  epochs: 200 # 600
+  epochs: 250 # 600
   device: cuda:0
   do_checkpoint: True
   seed: 0
@@ -65,13 +65,13 @@ training:
     batch_num_samples: 8 # 256
     grad_acc_steps: 1
     max_grad_norm: 10.0
-    start_after_epochs: 1 # 5
+    start_after_epochs: 25 # 5
     steps_per_epoch: 20 # 200
   sequence_embedder:
     batch_num_samples: 8 # 256
     grad_acc_steps: 1
     max_grad_norm: 10.0
-    start_after_epochs: 1 # 5
+    start_after_epochs: 50 # 5
     steps_per_epoch: 20 # 200
   world_model:
     batch_num_samples: 8 # 64
@@ -84,7 +84,7 @@ training:
     batch_num_samples: 4 # 64
     grad_acc_steps: 1
     max_grad_norm: 10.0
-    start_after_epochs: 2000 # 50
+    start_after_epochs: 75 # 50
     steps_per_epoch: 20 # 200
     imagine_horizon: ${common.sequence_length}
     burn_in: 20
@@ -98,7 +98,7 @@ evaluation:
   tokenizer:
     batch_num_samples: ${training.tokenizer.batch_num_samples}
     start_after_epochs: ${training.tokenizer.start_after_epochs}
-    save_reconstructions: True
+    save_reconstructions: False # True
   world_model:
     batch_num_samples: ${training.world_model.batch_num_samples}
     start_after_epochs: ${training.world_model.start_after_epochs}

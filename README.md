@@ -42,6 +42,7 @@ If you find this code or paper useful, please use the following reference:
 
 ```bash
 python src/main.py env.train.id=BreakoutNoFrameskip-v4 common.device=cpu wandb.mode=disabled
+python src/main_jepa.py env.train.id=BreakoutNoFrameskip-v4 common.device=mps wandb.mode=disabled
 ```
 
 By default, the logs are synced to [weights & biases](https://wandb.ai), set `wandb.mode=disabled` to turn it off.

@@ -14,7 +14,6 @@ class PatchEmbed(nn.Module):
             patch_size = patch_size, patch_size
         # calculate the number of patches
         self.patch_shape = (img_size[0] // patch_size[0], img_size[1] // patch_size[1])
-        print(self.patch_shape)
         # convolutional layer to convert the image into patches
         self.conv = nn.Conv2d(
             in_chans, embed_dim, kernel_size=patch_size, stride=patch_size

@@ -98,7 +98,7 @@ class Trainer:
             self.load_checkpoint()
 
     def run(self) -> None:
-
+        all_logs = []
         for epoch in range(self.start_epoch, 1 + self.cfg.common.epochs):
 
             print(f"\nEpoch {epoch} / {self.cfg.common.epochs}\n")
@@ -120,6 +120,12 @@ class Trainer:
             to_log.append({'duration': (time.time() - start_time) / 3600})
             for metrics in to_log:
                 wandb.log({'epoch': epoch, **metrics})
+            all_logs.append(to_log)
+
+        with open('logs.pkl', 'wb') as f:
+            import pickle
+            pickle.dump(all_logs, f)
+
 
         self.finish()
 

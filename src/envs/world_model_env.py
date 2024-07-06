@@ -39,7 +39,8 @@ class WorldModelEnv:
         if self.num_observations_tokens is None:
             self._num_observations_tokens = num_observations_tokens
 
-        _ = self.refresh_keys_values_with_initial_obs_tokens(obs_tokens)
+        # _ = self.refresh_keys_values_with_initial_obs_tokens(obs_tokens)
+        self.refresh_keys_values(obs_tokens.size(0))
         self.obs_tokens = obs_tokens
 
         return self.decode_obs_tokens()
@@ -52,6 +53,11 @@ class WorldModelEnv:
         print(f"resetting wm emv")
         outputs_wm = self.world_model(obs_tokens, past_keys_values=self.keys_values_wm)
         return outputs_wm.output_sequence  # (B, K, E)
+    
+    @torch.no_grad()
+    def refresh_keys_values(self, n: int) -> None:
+        self.keys_values_wm = self.world_model.transformer.generate_empty_keys_values(n=n, max_tokens=self.world_model.config.max_tokens)
+        
 
     @torch.no_grad()
     def step(self, action: Union[int, np.ndarray, torch.LongTensor], should_predict_next_obs: bool = True) -> None:
@@ -62,10 +68,12 @@ class WorldModelEnv:
         output_sequence, obs_tokens = [], []
 
         if self.keys_values_wm.size + num_passes > self.world_model.config.max_tokens:
-            _ = self.refresh_keys_values_with_initial_obs_tokens(self.obs_tokens)
+            # _ = self.refresh_keys_values_with_initial_obs_tokens(self.obs_tokens)
+            self.refresh_keys_values(self.obs_tokens.size(0))
 
         token = action.clone().detach() if isinstance(action, torch.Tensor) else torch.tensor(action, dtype=torch.long)
         token = token.reshape(-1, 1).to(self.device)  # (B, 1)
+        print(f"self.obs_tokens : {self.obs_tokens.shape} token : {token.shape}")
 
         for k in range(num_passes):  # assumption that there is only one action token.
             outputs_wm = self.world_model(token, past_keys_values=self.keys_values_wm)

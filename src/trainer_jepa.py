@@ -1,6 +1,7 @@
 from collections import defaultdict
 from functools import partial
 from pathlib import Path
+import pickle
 import shutil
 import sys
 import time
@@ -101,7 +102,8 @@ class Trainer:
             self.load_checkpoint()
 
     def run(self) -> None:
-
+        
+        all_logs = []
         for epoch in range(self.start_epoch, 1 + self.cfg.common.epochs):
 
             print(f"\nEpoch {epoch} / {self.cfg.common.epochs}\n")
@@ -123,6 +125,13 @@ class Trainer:
             to_log.append({'duration': (time.time() - start_time) / 3600})
             for metrics in to_log:
                 wandb.log({'epoch': epoch, **metrics})
+            
+            all_logs.append(to_log)
+        
+        # pickle the all logs
+        with open('all_logs.pkl', 'wb') as f:
+            print('Saving logs to all_logs.pkl')
+            pickle.dump(all_logs, f)
 
         self.finish()
 

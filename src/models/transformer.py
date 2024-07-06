@@ -107,7 +107,7 @@ class SelfAttention(nn.Module):
         if kv_cache is not None:
             kv_cache.update(k, v)
             k, v = kv_cache.get()
-
+        
         att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
         att = att.masked_fill(self.mask[L:L + T, :L + T] == 0, float('-inf'))
         att = F.softmax(att, dim=-1)

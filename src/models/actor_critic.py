@@ -129,7 +129,7 @@ class ActorCritic(nn.Module):
         assert mask_padding[:, -1].all()
         device = initial_observations.device
         wm_env = WorldModelEnv(tokenizer, world_model, device)
-
+        
         all_actions = []
         all_logits_actions = []
         all_values = []
@@ -140,6 +140,7 @@ class ActorCritic(nn.Module):
         self.reset(n=initial_observations.size(0), burnin_observations=burnin_observations, mask_padding=mask_padding[:, :-1])
 
         obs = wm_env.reset_from_initial_observations(initial_observations[:, -1])
+     
         for k in tqdm(range(horizon), disable=not show_pbar, desc='Imagination', file=sys.stdout):
 
             all_observations.append(obs)

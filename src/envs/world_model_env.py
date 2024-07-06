@@ -49,6 +49,7 @@ class WorldModelEnv:
         n, num_observations_tokens = obs_tokens.shape
         assert num_observations_tokens == self.num_observations_tokens
         self.keys_values_wm = self.world_model.transformer.generate_empty_keys_values(n=n, max_tokens=self.world_model.config.max_tokens)
+        print(f"resetting wm emv")
         outputs_wm = self.world_model(obs_tokens, past_keys_values=self.keys_values_wm)
         return outputs_wm.output_sequence  # (B, K, E)
 

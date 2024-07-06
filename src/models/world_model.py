@@ -88,14 +88,17 @@ class WorldModel(nn.Module):
     def forward(
         self, tokens: torch.LongTensor, past_keys_values: Optional[KeysValues] = None
     ) -> WorldModelOutput:
-
         num_steps = tokens.size(1)  # (B, T)
         assert num_steps <= self.config.max_tokens
         prev_steps = 0 if past_keys_values is None else past_keys_values.size
+
         sequences = self.embedder(tokens, num_steps, prev_steps) + self.pos_emb(
             prev_steps + torch.arange(num_steps, device=tokens.device)
         )
+        # start from there
+        print(f"current step : {num_steps} prev steps : {prev_steps}")
         x = self.transformer(sequences, past_keys_values)
+       
         logits_observations = self.head_observations(
             x, num_steps=num_steps, prev_steps=prev_steps
         )
@@ -114,20 +117,22 @@ class WorldModel(nn.Module):
             obs_tokens = tokenizer.encode(
                 batch["observations"], should_preprocess=True
             ).tokens  # (BL, K)
+
         act_tokens = rearrange(batch["actions"], "b l -> b l 1")
         tokens = rearrange(
             torch.cat((obs_tokens, act_tokens), dim=2), "b l k1 -> b (l k1)"
         )  # (B, L(K+1))
         outputs = self(tokens)
-
+   
         labels_observations, labels_rewards, labels_ends = (
             self.compute_labels_world_model(
                 obs_tokens, batch["rewards"], batch["ends"], batch["mask_padding"]
             )
         )
         logits_observations = rearrange(
-            outputs.logits_observations[:, :-1], "b t o -> (b t) o"
+            outputs.logits_observations[:, :-16], "b t o -> (b t) o"
         )
+
         loss_obs = F.cross_entropy(logits_observations, labels_observations)
         loss_rewards = F.cross_entropy(
             rearrange(outputs.logits_rewards, "b t e -> (b t) e"), labels_rewards
@@ -149,10 +154,13 @@ class WorldModel(nn.Module):
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         assert torch.all(ends.sum(dim=1) <= 1)  # at most 1 done
         mask_fill = torch.logical_not(mask_padding)
+        print(f"obs shape : {obs_tokens.shape}")
+
         labels_observations = rearrange(
             obs_tokens.masked_fill(mask_fill.unsqueeze(-1).expand_as(obs_tokens), -100),
             "b t k -> b (t k)",
-        )[:, 1:]
+        )[:, 16:]
+        print(f"labels obs shape : {labels_observations.shape}")
         labels_rewards = (
             (rewards.sign() + 1).masked_fill(mask_fill, -100).long()
         )  # Rewards clipped to {-1, 0, 1}

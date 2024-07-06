@@ -104,7 +104,6 @@ class Trainer:
             print(f"\nEpoch {epoch} / {self.cfg.common.epochs}\n")
             start_time = time.time()
             to_log = []
-
             if self.cfg.training.should:
                 if epoch <= self.cfg.collection.train.stop_after_epochs:
                     to_log += self.train_collector.collect(self.agent, epoch, **self.cfg.collection.train.config)

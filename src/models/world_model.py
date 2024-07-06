@@ -96,7 +96,7 @@ class WorldModel(nn.Module):
             prev_steps + torch.arange(num_steps, device=tokens.device)
         )
         # start from there
-        print(f"current step : {num_steps} prev steps : {prev_steps}")
+        # print(f"current step : {num_steps} prev steps : {prev_steps}")
         x = self.transformer(sequences, past_keys_values)
        
         logits_observations = self.head_observations(

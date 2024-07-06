@@ -110,7 +110,7 @@ class ActorCritic(nn.Module):
                 gamma=gamma,
                 lambda_=lambda_,
             )[:, :-1]
-        print(outputs.rewards)
+        # print(outputs.rewards)
         values = outputs.values[:, :-1]
 
         d = Categorical(logits=outputs.logits_actions[:, :-1])

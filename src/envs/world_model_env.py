@@ -73,24 +73,14 @@ class WorldModelEnv:
 
         token = action.clone().detach() if isinstance(action, torch.Tensor) else torch.tensor(action, dtype=torch.long)
         token = token.reshape(-1, 1).to(self.device)  # (B, 1)
-        print(f"self.obs_tokens : {self.obs_tokens.shape} token : {token.shape}")
-
-        for k in range(num_passes):  # assumption that there is only one action token.
-            outputs_wm = self.world_model(token, past_keys_values=self.keys_values_wm)
-            output_sequence.append(outputs_wm.output_sequence)
-
-            if k == 0:
-                reward = Categorical(logits=outputs_wm.logits_rewards).sample().float().cpu().numpy().reshape(-1) - 1   # (B,)
-                done = Categorical(logits=outputs_wm.logits_ends).sample().cpu().numpy().astype(bool).reshape(-1)       # (B,)
-
-            if k < self.num_observations_tokens:
-                token = Categorical(logits=outputs_wm.logits_observations).sample()
-                obs_tokens.append(token)
-
-        output_sequence = torch.cat(output_sequence, dim=1)   # (B, 1 + K, E)
-        self.obs_tokens = torch.cat(obs_tokens, dim=1)        # (B, K)
-
+        state_action_tokens = torch.cat((self.obs_tokens, token), dim=1)  # (B, K + 1)
+        outputs_wm = self.world_model(state_action_tokens, past_keys_values=self.keys_values_wm)
+        output_sequence.append(outputs_wm.output_sequence)
+        reward = Categorical(logits=outputs_wm.logits_rewards).sample().float().cpu().numpy().reshape(-1) - 1   # (B,)
+        done = Categorical(logits=outputs_wm.logits_ends).sample().cpu().numpy().astype(bool).reshape(-1)       # (B,)
+        self.obs_tokens = Categorical(logits=outputs_wm.logits_observations).sample()
         obs = self.decode_obs_tokens() if should_predict_next_obs else None
+
         return obs, reward, done, None
 
     @torch.no_grad()

@@ -122,6 +122,12 @@ class Trainer:
                 wandb.log({'epoch': epoch, **metrics})
             all_logs.append(to_log)
 
+            if epoch != 0 and epoch % 20 == 0:
+                with open('logs.pkl', 'wb') as f:
+                    import pickle
+                    pickle.dump(all_logs, f)
+
+
         with open('logs.pkl', 'wb') as f:
             import pickle
             pickle.dump(all_logs, f)

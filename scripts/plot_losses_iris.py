@@ -23,10 +23,21 @@ all_losses = [
     "world_model/train/loss_obs",
     "world_model/train/loss_rewards",
     "world_model/train/loss_ends",
-    # "actor_critic/train/loss_actions",
-    # "actor_critic/train/loss_values",
-    # "actor_critic/train/loss_entropy",
+    "actor_critic/train/loss_actions",
+    "actor_critic/train/loss_values",
+    "actor_critic/train/loss_entropy",
 ]
+# all_losses = [
+#     "tokenizer/eval/commitment_loss",
+#     "tokenizer/eval/reconstruction_loss",
+#     "tokenizer/eval/perceptual_loss",
+#     "world_model/eval/loss_obs",
+#     "world_model/eval/loss_rewards",
+#     "world_model/eval/loss_ends",
+#     "actor_critic/train/loss_actions",
+#     "actor_critic/train/loss_values",
+#     "actor_critic/train/loss_entropy",
+# ]
 
 losses_dict = {loss: [] for loss in all_losses}
 

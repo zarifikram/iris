@@ -38,7 +38,7 @@ class WorldModel(nn.Module):
         obs_tokens_pattern = 1 - act_tokens_pattern
 
         self.pos_emb = nn.Embedding(config.max_tokens, config.embed_dim)
-
+        # print(f"act_vocab_size {act_vocab_size}")
         self.embedder = Embedder(
             max_blocks=config.max_blocks,
             block_masks=[act_tokens_pattern, obs_tokens_pattern],
@@ -80,6 +80,10 @@ class WorldModel(nn.Module):
             ),
         )
 
+        self.state_action_mixer = nn.Sequential(
+            nn.Softmax(dim=-1)
+        )
+
         self.apply(init_weights)
 
     def __repr__(self) -> str:
@@ -114,7 +118,9 @@ class WorldModel(nn.Module):
             obs_tokens = tokenizer.encode(
                 batch["observations"], should_preprocess=True
             ).tokens  # (BL, K)
-        act_tokens = rearrange(batch["actions"], "b l -> b l 1")
+        # act_tokens = rearrange(batch["actions"], "b l -> b l 1")
+        act_tokens = batch["actions"]
+        act_tokens = self.state_action_mixer(act_tokens).argmax(dim=-1, keepdim=True)
         tokens = rearrange(
             torch.cat((obs_tokens, act_tokens), dim=2), "b l k1 -> b (l k1)"
         )  # (B, L(K+1))

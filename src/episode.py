@@ -14,7 +14,7 @@ class EpisodeMetrics:
 @dataclass
 class Episode:
     observations: torch.ByteTensor
-    actions: torch.LongTensor
+    actions: torch.FloatTensor
     rewards: torch.FloatTensor
     ends: torch.LongTensor
     mask_padding: torch.BoolTensor

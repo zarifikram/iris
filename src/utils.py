@@ -134,13 +134,15 @@ class EpisodeDirManager:
 
 
 class RandomHeuristic:
-    def __init__(self, num_actions):
+    def __init__(self, num_actions, env):
         self.num_actions = num_actions
+        self.env = env
 
     def act(self, obs):
         assert obs.ndim == 4  # (N, H, W, C)
         n = obs.size(0)
-        return torch.randint(low=0, high=self.num_actions, size=(n,))
+        # return torch.randint(low=0, high=self.num_actions, size=(n,))
+        return self.env.action_spec.rand()
 
 
 def make_video(fname, fps, frames):

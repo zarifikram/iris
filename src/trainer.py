@@ -22,6 +22,7 @@ from make_reconstructions import make_reconstructions_from_batch
 from models.actor_critic import ActorCritic
 from models.world_model import WorldModel
 from utils import configure_optimizer, EpisodeDirManager, set_seed
+from dmc_env import build_single_env, build_vec_env
 
 class Trainer:
     def __init__(self, cfg: DictConfig) -> None:
@@ -61,24 +62,29 @@ class Trainer:
         episode_manager_test = EpisodeDirManager(self.episode_dir / 'test', max_num_episodes=cfg.collection.test.num_episodes_to_save)
         self.episode_manager_imagination = EpisodeDirManager(self.episode_dir / 'imagination', max_num_episodes=cfg.evaluation.actor_critic.num_episodes_to_save)
 
-        def create_env(cfg_env, num_envs):
-            env_fn = partial(instantiate, config=cfg_env)
-            return MultiProcessEnv(env_fn, num_envs, should_wait_num_envs_ratio=1.0) if num_envs > 1 else SingleProcessEnv(env_fn)
+        def create_env(cfg_env, num_envs, seed):
+            # env_fn = partial(instantiate, config=cfg_env)
+            # return MultiProcessEnv(env_fn, num_envs, should_wait_num_envs_ratio=1.0) if num_envs > 1 else SingleProcessEnv(env_fn)
+            vec_env, env_names, task_names = build_vec_env([cfg_env.env], [cfg_env.task], cfg_env.size, num_envs, seed, cfg_env.frame_skip)
+            vec_env.num_actions = vec_env.action_spec.rand().shape[-1]
+            vec_env.num_envs = vec_env.reset()["pixels"].shape[0]
+
+            return vec_env
 
         if self.cfg.training.should:
           
-            train_env = create_env(cfg.env.train, cfg.collection.train.num_envs)
+            train_env = create_env(cfg.env.train, cfg.collection.train.num_envs, cfg.common.seed)
             self.train_dataset = instantiate(cfg.datasets.train)
             self.train_collector = Collector(train_env, self.train_dataset, episode_manager_train)
 
         if self.cfg.evaluation.should:
-            test_env = create_env(cfg.env.test, cfg.collection.test.num_envs)
+            test_env = create_env(cfg.env.test, cfg.collection.test.num_envs, cfg.common.seed)
             self.test_dataset = instantiate(cfg.datasets.test)
             self.test_collector = Collector(test_env, self.test_dataset, episode_manager_test)
 
         assert self.cfg.training.should or self.cfg.evaluation.should
         env = train_env if self.cfg.training.should else test_env
-
+      
         tokenizer = instantiate(cfg.tokenizer)
         world_model = WorldModel(obs_vocab_size=tokenizer.vocab_size, act_vocab_size=env.num_actions, config=instantiate(cfg.world_model))
         actor_critic = ActorCritic(**cfg.actor_critic, act_vocab_size=env.num_actions)
@@ -150,7 +156,7 @@ class Trainer:
     def train_component(self, component: nn.Module, optimizer: torch.optim.Optimizer, steps_per_epoch: int, batch_num_samples: int, grad_acc_steps: int, max_grad_norm: Optional[float], sequence_length: int, sample_from_start: bool, **kwargs_loss: Any) -> Dict[str, float]:
         loss_total_epoch = 0.0
         intermediate_losses = defaultdict(float)
-        print(f"training {str(component)} for {steps_per_epoch} steps and sequence length {sequence_length}")
+        # print(f"training {str(component)} for {steps_per_epoch} steps and sequence length {sequence_length}")
         for _ in tqdm(range(steps_per_epoch), desc=f"Training {str(component)}", file=sys.stdout):
             optimizer.zero_grad()
             for _ in range(grad_acc_steps):

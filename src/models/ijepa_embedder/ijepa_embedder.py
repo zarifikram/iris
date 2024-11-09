@@ -48,12 +48,12 @@ class IJEPA_Embedder(nn.Module):
     #     return self.model(x, target_aspect_ratio, target_scale, context_aspect_ratio, context_scale)
 
     # '''Update momentum for teacher encoder'''
-    # def update_momentum(self, m):
-    #     student_model = self.model.student_encoder.eval()
-    #     teacher_model = self.model.teacher_encoder.eval()
-    #     with torch.no_grad():
-    #         for student_param, teacher_param in zip(student_model.parameters(), teacher_model.parameters()):
-    #             teacher_param.data.mul_(other=m).add_(other=student_param.data, alpha=1 - m)
+    def update_momentum(self, m):
+        student_model = self.model.student_encoder.eval()
+        teacher_model = self.model.teacher_encoder.eval()
+        with torch.no_grad():
+            for student_param, teacher_param in zip(student_model.parameters(), teacher_model.parameters()):
+                teacher_param.data.mul_(other=m).add_(other=student_param.data, alpha=1 - m)
 
     # def training_step(self, batch, batch_idx):
     #     x = batch
@@ -91,9 +91,9 @@ class IJEPA_Embedder(nn.Module):
 
     #     return self(batch, target_aspect_ratio, target_scale, context_aspect_ratio, context_scale) #just get teacher embedding
 
-    # def on_after_backward(self):
-    #     self.update_momentum(self.m)
-    #     self.m += (self.m_start_end[1] - self.m_start_end[0]) / self.trainer.estimated_stepping_batches
+    def on_after_backward(self):
+        self.update_momentum(self.m)
+        self.m += (self.m_start_end[1] - self.m_start_end[0]) / self.trainer.estimated_stepping_batches
 
     # def configure_optimizers(self):
     #     optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)

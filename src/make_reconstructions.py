@@ -23,7 +23,7 @@ def make_reconstructions_from_batch(batch, save_dir, epoch, tokenizer):
 def check_batch(batch):
     assert sorted(batch.keys()) == ['actions', 'ends', 'mask_padding', 'observations', 'rewards']
     b, t, _, _, _ = batch['observations'].shape  # (B, T, C, H, W)
-    assert batch['actions'].shape == batch['rewards'].shape == batch['ends'].shape == batch['mask_padding'].shape == (b, t)
+    assert batch['rewards'].shape == batch['ends'].shape == batch['mask_padding'].shape == (b, t)
 
 
 def tensor_to_np_frames(inputs):

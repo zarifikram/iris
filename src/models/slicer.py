@@ -49,7 +49,13 @@ class Embedder(nn.Module):
     def forward(self, tokens: torch.Tensor, num_steps: int, prev_steps: int) -> torch.Tensor:
         assert tokens.ndim == 2  # x is (B, T)
         output = torch.zeros(*tokens.size(), self.embedding_dim, device=tokens.device)
+        done = True
         for slicer, emb in zip(self.slicers, self.embedding_tables):
             s = slicer.compute_slice(num_steps, prev_steps)
+            # print(f"output slice {output[:, s].shape} token slice shape {tokens[:, s].shape}")
+            # print(f"tokens type {tokens[:, s].dtype} {tokens[0, s]}")
+            # if done:
+            #     done = False 
+            #     continue
             output[:, s] = emb(tokens[:, s])
         return output
